@@ -109,14 +109,9 @@ class MouseController:
         ctypes.windll.user32.SendInput(1, ctypes.pointer(inp), ctypes.sizeof(inp))
 
     def move(self, dx, dy):
-        t = time.perf_counter()
-        # Smooth delta velocity
-        smooth_dx = self.filter_x.filter(t, dx)
-        smooth_dy = self.filter_y.filter(t, dy)
-        
         # Accumulate float remainders to support high precision slow movement
-        self.dx_remainder += smooth_dx
-        self.dy_remainder += smooth_dy
+        self.dx_remainder += dx
+        self.dy_remainder += dy
         
         move_x = int(self.dx_remainder)
         move_y = int(self.dy_remainder)

@@ -77,10 +77,9 @@ class SwipeXViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onTouchMove(dx: Float, dy: Float) {
-        val timestamp = System.currentTimeMillis()
-        val filteredDx = xFilter.filter(dx.toDouble(), timestamp).toFloat() * _sensitivity.value * _cursorSpeed.value
-        val filteredDy = yFilter.filter(dy.toDouble(), timestamp).toFloat() * _sensitivity.value * _cursorSpeed.value
-        wsManager.sendMouseMove(filteredDx, filteredDy)
+        val rawDx = dx * _sensitivity.value * _cursorSpeed.value
+        val rawDy = dy * _sensitivity.value * _cursorSpeed.value
+        wsManager.sendMouseMove(rawDx, rawDy)
     }
 
     fun onAction(button: String, action: String) {
