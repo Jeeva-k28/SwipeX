@@ -20,7 +20,6 @@ fun Modifier.touchpadInput(
             val down = awaitFirstDown(requireUnconsumed = false)
             var lastTouchTime = System.currentTimeMillis()
             var startPos = down.position
-            var prevPos = down.position
             var longPressTriggered = false
             
             // Start a coroutine to check for long press
@@ -45,8 +44,11 @@ fun Modifier.touchpadInput(
                     if (longPressTriggered) {
                         onClick("l", "u") // Release left down
                     } else if (pointers.size == 1 && totalDistance < 15.0f && duration < 300) {
-                        // Quick tap registers a left click
+                        // Quick tap with 1 finger registers a left click
                         onClick("l", "t")
+                    } else if (pointers.size == 2 && totalDistance < 15.0f && duration < 300) {
+                        // Quick tap with 2 fingers registers a right click
+                        onClick("r", "t")
                     }
                     break
                 }
@@ -55,9 +57,8 @@ fun Modifier.touchpadInput(
 
                 if (activePointers.size == 1) {
                     val pointer = activePointers.first()
-                    val currentPos = pointer.position
-                    val delta = currentPos - prevPos
-                    val totalDistance = (currentPos - startPos).getDistance()
+                    val delta = pointer.position - pointer.previousPosition
+                    val totalDistance = (pointer.position - startPos).getDistance()
 
                     // If dragged, cancel long press detection (unless already triggered)
                     if (totalDistance > 15.0f && !longPressTriggered) {
@@ -72,7 +73,6 @@ fun Modifier.touchpadInput(
                             onMove(dx, dy)
                         }
                     }
-                    prevPos = currentPos
                 } else if (activePointers.size == 2) {
                     // Two fingers scroll
                     longPressJob.cancel()

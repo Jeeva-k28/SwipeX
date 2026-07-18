@@ -9,16 +9,42 @@ MOUSEEVENTF_RIGHTDOWN = 0x0008
 MOUSEEVENTF_RIGHTUP = 0x0010
 MOUSEEVENTF_WHEEL = 0x0800
 
+class DeltaSmoother:
+    """
+    Exponential Moving Average (EMA) filter specifically designed for relative deltas.
+    Smooths out micro-jitter while moving, but resets instantly when touch stops
+    to avoid any lag or sliding effect.
+    """
+    def __init__(self, alpha=0.3):
+        self.alpha = alpha
+        self.last_dx = 0.0
+        self.last_dy = 0.0
+
+    def filter(self, dx, dy):
+        if dx == 0.0 and dy == 0.0:
+            self.last_dx = 0.0
+            self.last_dy = 0.0
+            return 0.0, 0.0
+            
+        smoothed_dx = self.alpha * dx + (1.0 - self.alpha) * self.last_dx
+        smoothed_dy = self.alpha * dy + (1.0 - self.alpha) * self.last_dy
+        
+        self.last_dx = smoothed_dx
+        self.last_dy = smoothed_dy
+        return smoothed_dx, smoothed_dy
+
 class MouseController:
     """
     Simulates Windows mouse events using native Win32 mouse_event.
     Includes sub-pixel remainder accumulation to guarantee no movements are lost.
     """
     def __init__(self):
+        self.smoother = DeltaSmoother(alpha=0.3)
         self.dx_remainder = 0.0
         self.dy_remainder = 0.0
 
     def reset_filters(self):
+        self.smoother = DeltaSmoother(alpha=0.3)
         self.dx_remainder = 0.0
         self.dy_remainder = 0.0
 
@@ -27,9 +53,12 @@ class MouseController:
         ctypes.windll.user32.mouse_event(dw_flags, int(dx), int(dy), int(mouse_data), 0)
 
     def move(self, dx, dy):
+        # Smooth relative velocity deltas
+        smooth_dx, smooth_dy = self.smoother.filter(dx, dy)
+        
         # Accumulate float remainders to support high precision slow movement
-        self.dx_remainder += dx
-        self.dy_remainder += dy
+        self.dx_remainder += smooth_dx
+        self.dy_remainder += smooth_dy
         
         move_x = int(self.dx_remainder)
         move_y = int(self.dy_remainder)
