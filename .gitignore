@@ -1,0 +1,21 @@
+# Android build outputs and IDE configuration files
+.gradle/
+.idea/
+build/
+app/build/
+*.iml
+local.properties
+
+# Python build outputs and virtual environments
+__pycache__/
+*.pyc
+SwipeX Desktop/build/
+SwipeX Desktop/dist/
+.venv/
+venv/
+env/
+*.spec
+
+# OS files
+.DS_Store
+Thumbs.db
