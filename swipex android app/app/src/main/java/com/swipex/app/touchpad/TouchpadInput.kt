@@ -135,12 +135,12 @@ fun Modifier.touchpadInput(
 
                     if (gestureMode == GestureMode.ONE_FINGER_MOVE) {
                         if (pointer.previousPressed) {
-                            onMove(delta.x, delta.y)
+                            onMove(delta.y, -delta.x)
                             pointer.consume()
                         }
                     } else if (gestureMode == GestureMode.ONE_FINGER_DRAG) {
                         if (pointer.previousPressed) {
-                            onMove(delta.x, delta.y)
+                            onMove(delta.y, -delta.x)
                             pointer.consume()
                         }
                     }
@@ -178,7 +178,7 @@ fun Modifier.touchpadInput(
                         val dx = (p1Delta.x + p2Delta.x) / 2f
                         
                         if (abs(dy) > 0.05f || abs(dx) > 0.05f) {
-                            onScroll(dy, dx)
+                            onScroll(-dx, dy)
                             p1.consume()
                             p2.consume()
                         }
@@ -218,25 +218,28 @@ fun Modifier.touchpadInput(
                         val displacement = currentPos - threeFingerStartPos
                         
                         val threshold = 70.0f
-                        if (abs(displacement.y) > threshold) {
-                            if (displacement.y < 0) {
+                        // Map 3-finger swipe directions rotated 90 degrees counter-clockwise:
+                        // Physical Swipe Up/Down aligns to portrait screen X axis:
+                        if (abs(displacement.x) > threshold) {
+                            if (displacement.x > 0) {
                                 vibrate()
-                                onGesture("taskview") // Swiped Up
+                                onGesture("taskview") // Physical Swipe Up
                             } else {
                                 vibrate()
-                                onGesture("desktop")  // Swiped Down
+                                onGesture("desktop")  // Physical Swipe Down
                             }
                             threeFingerSwipeTriggered = true
                             p1.consume()
                             p2.consume()
                             p3.consume()
-                        } else if (abs(displacement.x) > threshold) {
-                            if (displacement.x < 0) {
+                        // Physical Swipe Left/Right aligns to portrait screen Y axis:
+                        } else if (abs(displacement.y) > threshold) {
+                            if (displacement.y < 0) {
                                 vibrate()
-                                onGesture("prevdesktop") // Swiped Left
+                                onGesture("prevdesktop") // Physical Swipe Left
                             } else {
                                 vibrate()
-                                onGesture("nextdesktop") // Swiped Right
+                                onGesture("nextdesktop") // Physical Swipe Right
                             }
                             threeFingerSwipeTriggered = true
                             p1.consume()

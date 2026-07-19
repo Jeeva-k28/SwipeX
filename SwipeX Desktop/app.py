@@ -154,7 +154,7 @@ class WebSocketServerThread(threading.Thread):
     def __init__(self, app, port=18888):
         super().__init__(daemon=True)
         self.port = port
-        self.config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning", log_config=None)
+        self.config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
         self.server = uvicorn.Server(self.config)
         self.loop = None
  
