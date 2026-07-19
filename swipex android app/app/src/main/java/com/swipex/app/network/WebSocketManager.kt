@@ -1,73 +1,127 @@
 package com.swipex.app.network
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import java.io.OutputStream
-import java.net.InetSocketAddress
-import java.net.Socket
+import okhttp3.*
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class WebSocketManager(
     private val onConnectionChanged: (Boolean, String?) -> Unit
 ) {
-    private var socket: Socket? = null
-    private var outputStream: OutputStream? = null
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .writeTimeout(0, TimeUnit.MILLISECONDS)
+        .pingInterval(3, TimeUnit.SECONDS) // Heartbeat ping every 3s
+        .build()
+
+    private var webSocket: WebSocket? = null
     private val executor = Executors.newSingleThreadExecutor()
-    
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private var currentIp: String? = null
     private var currentPort: Int = 18888
     private var isConnecting: Boolean = false
-    
+
     var isConnected: Boolean = false
         private set
+
+    // Background thread runner for auto-reconnection
+    private var reconnectThread: Thread? = null
+    private var shouldReconnect: Boolean = false
 
     fun connect(ip: String, port: Int = 18888) {
         if (currentIp == ip && currentPort == port && (isConnected || isConnecting)) {
             return
         }
-        
-        disconnect()
+
         currentIp = ip
         currentPort = port
-        isConnecting = true
-        
-        executor.execute {
-            try {
-                Log.d("TCPClient", "Connecting to TCP Socket $ip:$port")
-                val socketAddress = InetSocketAddress(ip, port)
-                val newSocket = Socket()
-                newSocket.connect(socketAddress, 5000) // 5 second connection timeout
-                
-                socket = newSocket
-                outputStream = newSocket.getOutputStream()
-                isConnected = true
-                isConnecting = false
-                
-                onConnectionChanged(true, null)
-                Log.d("TCPClient", "TCP Connected successfully")
-            } catch (e: Exception) {
-                Log.e("TCPClient", "TCP Connection failed: ${e.message}", e)
-                isConnected = false
-                isConnecting = false
-                val errorMsg = e.localizedMessage ?: e.message ?: "Connection Refused/Timeout"
-                onConnectionChanged(false, errorMsg)
+        shouldReconnect = true
+
+        startConnectionLoop()
+    }
+
+    private fun startConnectionLoop() {
+        if (reconnectThread != null && reconnectThread!!.isAlive) {
+            return
+        }
+
+        reconnectThread = Thread {
+            while (shouldReconnect && !isConnected) {
+                val ip = currentIp
+                if (ip != null) {
+                    isConnecting = true
+                    try {
+                        val request = Request.Builder()
+                            .url("ws://$ip:$currentPort/ws")
+                            .build()
+
+                        Log.d("WebSocket", "Attempting connection to ws://$ip:$currentPort/ws")
+                        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+                            override fun onOpen(webSocket: WebSocket, response: Response) {
+                                Log.d("WebSocket", "WebSocket Connected successfully")
+                                isConnected = true
+                                isConnecting = false
+                                mainHandler.post {
+                                    onConnectionChanged(true, null)
+                                }
+                            }
+
+                            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                                webSocket.close(1000, null)
+                            }
+
+                            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                                Log.d("WebSocket", "WebSocket Closed")
+                                handleDisconnect(null)
+                            }
+
+                            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                                Log.e("WebSocket", "WebSocket Failure: ${t.message}")
+                                handleDisconnect(t.localizedMessage ?: t.message ?: "Connection Failure")
+                            }
+                        })
+                    } catch (e: Exception) {
+                        Log.e("WebSocket", "Exception in webSocket init: ${e.message}")
+                        handleDisconnect(e.message)
+                    }
+                }
+
+                // Wait 2 seconds before checking / retrying reconnect
+                try {
+                    Thread.sleep(2000)
+                } catch (e: InterruptedException) {
+                    break
+                }
             }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun handleDisconnect(errorMsg: String?) {
+        isConnected = false
+        isConnecting = false
+        mainHandler.post {
+            onConnectionChanged(false, errorMsg)
         }
     }
 
     fun disconnect() {
-        executor.execute {
-            try {
-                outputStream?.close()
-                socket?.close()
-            } catch (e: Exception) {
-                Log.e("TCPClient", "Error disconnecting", e)
-            } finally {
-                socket = null
-                outputStream = null
-                isConnected = false
-                isConnecting = false
-                onConnectionChanged(false, null)
-            }
+        shouldReconnect = false
+        reconnectThread?.interrupt()
+        reconnectThread = null
+
+        webSocket?.close(1000, "User disconnected")
+        webSocket = null
+        isConnected = false
+        isConnecting = false
+
+        mainHandler.post {
+            onConnectionChanged(false, null)
         }
     }
 
@@ -75,29 +129,23 @@ class WebSocketManager(
         if (isConnected) {
             executor.execute {
                 try {
-                    val stream = outputStream
-                    if (stream != null) {
-                        // Append a newline so the python server knows where the packet ends!
-                        stream.write((message + "\n").toByteArray(Charsets.UTF_8))
-                        stream.flush()
-                    }
+                    webSocket?.send(message)
                 } catch (e: Exception) {
-                    Log.e("TCPClient", "Error sending message", e)
-                    // Auto-disconnect on send failure to clean up resources
+                    Log.e("WebSocket", "Error sending message: ${e.message}")
                     disconnect()
                 }
             }
         }
     }
-    
+
     fun sendMouseMove(dx: Float, dy: Float) {
         sendMessage("m,$dx,$dy")
     }
-    
+
     fun sendClick(button: String, action: String) {
         sendMessage("c,$button,$action")
     }
-    
+
     fun sendScroll(dy: Float) {
         sendMessage("s,$dy")
     }

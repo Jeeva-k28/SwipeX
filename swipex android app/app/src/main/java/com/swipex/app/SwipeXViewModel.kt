@@ -76,18 +76,53 @@ class SwipeXViewModel(application: Application) : AndroidViewModel(application) 
         udpListener.start()
     }
 
+    private var lastMoveTime = 0L
+
     fun onTouchMove(dx: Float, dy: Float) {
-        val rawDx = dx * _sensitivity.value * _cursorSpeed.value
-        val rawDy = dy * _sensitivity.value * _cursorSpeed.value
-        wsManager.sendMouseMove(rawDx, rawDy)
+        val currentTime = System.currentTimeMillis()
+        val timeDeltaMs = if (lastMoveTime == 0L) 16L else (currentTime - lastMoveTime)
+        lastMoveTime = currentTime
+
+        val distance = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+        if (distance == 0f || timeDeltaMs <= 0L) return
+
+        // Calculate velocity in pixels per millisecond
+        val velocity = distance / timeDeltaMs.toFloat()
+
+        // Adaptive pointer speed acceleration curve
+        val multiplier = when {
+            velocity < 0.1f -> 0.4f
+            velocity < 0.5f -> 0.4f + (velocity - 0.1f) * 1.5f
+            velocity < 1.5f -> 1.0f + (velocity - 0.5f) * 1.0f
+            else -> 2.0f + (velocity - 1.5f) * 1.5f
+        }
+
+        val acceleratedDx = dx * multiplier * _sensitivity.value * _cursorSpeed.value
+        val acceleratedDy = dy * multiplier * _sensitivity.value * _cursorSpeed.value
+
+        wsManager.sendMouseMove(acceleratedDx, acceleratedDy)
     }
 
     fun onAction(button: String, action: String) {
         wsManager.sendClick(button, action)
     }
 
-    fun onScroll(dy: Float) {
-        wsManager.sendScroll(dy * _scrollSpeed.value)
+    fun onScroll(dy: Float, dx: Float) {
+        val scrollScale = _scrollSpeed.value
+        if (Math.abs(dy) > 0.01f) {
+            wsManager.sendScroll(dy * scrollScale)
+        }
+        if (Math.abs(dx) > 0.01f) {
+            wsManager.sendMessage("h,${dx * scrollScale}")
+        }
+    }
+
+    fun onZoom(zoomType: String) {
+        wsManager.sendMessage("z,$zoomType")
+    }
+
+    fun onGesture(gestureName: String) {
+        wsManager.sendMessage("g,$gestureName")
     }
 
     private fun idToIp(id: String): String? {

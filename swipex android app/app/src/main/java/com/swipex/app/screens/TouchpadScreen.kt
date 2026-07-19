@@ -100,7 +100,9 @@ fun TouchpadScreen(viewModel: SwipeXViewModel) {
                     .touchpadInput(
                         onMove = { dx, dy -> viewModel.onTouchMove(dx, dy) },
                         onClick = { button, action -> viewModel.onAction(button, action) },
-                        onScroll = { dy -> viewModel.onScroll(dy) },
+                        onScroll = { dy, dx -> viewModel.onScroll(dy, dx) },
+                        onZoom = { zoomType -> viewModel.onZoom(zoomType) },
+                        onGesture = { gestureName -> viewModel.onGesture(gestureName) },
                         vibrate = { HapticHelper.vibrate(context, 40) }
                     )
             )

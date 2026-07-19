@@ -81,109 +81,93 @@ def get_local_ips():
         ips.append("127.0.0.1")
     return ips
 
-# Raw TCP Server Thread
-class TcpServerThread(threading.Thread):
-    def __init__(self, host="0.0.0.0", port=18888):
-        super().__init__(daemon=True)
-        self.host = host
-        self.port = port
-        self.running = True
-        self.server_socket = None
-        self.client_socket = None
-
-    def run(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+@fastapi_app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    global is_connected, client_host, active_websocket
+    
+    # Close any existing active connection cleanly to avoid leaks
+    if active_websocket:
         try:
-            self.server_socket.bind((self.host, self.port))
-            self.server_socket.listen(1)
-            print(f"TCP Server listening on {self.host}:{self.port}")
-        except Exception as e:
-            print(f"Failed to bind TCP Server: {e}")
-            return
-
-        while self.running:
-            try:
-                self.server_socket.settimeout(1.0)
+            await active_websocket.close(code=1000, reason="New connection accepted")
+        except Exception:
+            pass
+            
+    await websocket.accept()
+    
+    is_connected = True
+    active_websocket = websocket
+    client_host = websocket.client.host
+    mouse_controller.reset_filters()
+    
+    # Update GUI status in main thread
+    if app_instance:
+        app_instance.update_connection_status(True, client_host)
+ 
+    try:
+        while True:
+            data = await websocket.receive_text()
+            parts = data.strip().split(",")
+            if not parts:
+                continue
+                
+            cmd = parts[0]
+            if cmd == "m" and len(parts) == 3:
                 try:
-                    client_socket, client_addr = self.server_socket.accept()
-                except socket.timeout:
-                    continue
-                
-                self.client_socket = client_socket
-                client_ip = client_addr[0]
-                print(f"Connected to client: {client_ip}")
-                
-                global is_connected
-                is_connected = True
-                mouse_controller.reset_filters()
-                
-                # Update GUI
-                if app_instance:
-                    app_instance.update_connection_status(True, client_ip)
-                
-                buffer = ""
-                self.client_socket.settimeout(2.0)
-                while self.running:
-                    try:
-                        data = self.client_socket.recv(1024).decode('utf-8')
-                        if not data:
-                            break # Client disconnected
-                        
-                        buffer += data
-                        while "\n" in buffer:
-                            line, buffer = buffer.split("\n", 1)
-                            self.process_command(line.strip())
-                    except socket.timeout:
-                        continue
-                    except Exception:
-                        break
-                        
-                print("Client disconnected")
-                is_connected = False
-                if app_instance:
-                    app_instance.update_connection_status(False)
-                self.client_socket.close()
-                self.client_socket = None
-            except Exception as e:
-                print(f"Error in TCP loop: {e}")
-                
-        if self.server_socket:
-            self.server_socket.close()
+                    dx = float(parts[1])
+                    dy = float(parts[2])
+                    mouse_controller.move(dx, dy)
+                except ValueError:
+                    pass
+            elif cmd == "c" and len(parts) == 3:
+                mouse_controller.click(parts[1], parts[2])
+            elif cmd == "s" and len(parts) == 2:
+                try:
+                    dy = float(parts[1])
+                    mouse_controller.scroll(dy)
+                except ValueError:
+                    pass
+            elif cmd == "h" and len(parts) == 2:
+                try:
+                    dx = float(parts[1])
+                    mouse_controller.horizontal_scroll(dx)
+                except ValueError:
+                    pass
+            elif cmd == "z" and len(parts) == 2:
+                mouse_controller.zoom(parts[1])
+            elif cmd == "g" and len(parts) == 2:
+                mouse_controller.gesture(parts[1])
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"WebSocket processing error: {e}")
+    finally:
+        if active_websocket == websocket:
+            is_connected = False
+            active_websocket = None
+            client_host = "Unknown"
+            mouse_controller.reset_filters()
+            if app_instance:
+                app_instance.update_connection_status(False)
 
-    def process_command(self, data):
-        parts = data.split(",")
-        if not parts:
-            return
-        cmd = parts[0]
-        if cmd == "m" and len(parts) == 3:
-            try:
-                dx = float(parts[1])
-                dy = float(parts[2])
-                mouse_controller.move(dx, dy)
-            except ValueError:
-                pass
-        elif cmd == "c" and len(parts) == 3:
-            mouse_controller.click(parts[1], parts[2])
-        elif cmd == "s" and len(parts) == 2:
-            try:
-                dy = float(parts[1])
-                mouse_controller.scroll(dy)
-            except ValueError:
-                pass
-
+# Uvicorn WebSocket Server Thread
+class WebSocketServerThread(threading.Thread):
+    def __init__(self, app, port=18888):
+        super().__init__(daemon=True)
+        self.port = port
+        self.config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning", log_config=None)
+        self.server = uvicorn.Server(self.config)
+        self.loop = None
+ 
+    def run(self):
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_until_complete(self.server.serve())
+ 
     def stop(self):
-        self.running = False
-        if self.client_socket:
-            try:
-                self.client_socket.close()
-            except Exception:
-                pass
-        if self.server_socket:
-            try:
-                self.server_socket.close()
-            except Exception:
-                pass
+        if self.server:
+            self.server.should_exit = True
+            if self.loop and self.loop.is_running():
+                self.loop.stop()
 
 # UDP Beacon Broadcaster Thread
 class UdpBeaconThread(threading.Thread):
@@ -360,8 +344,8 @@ class SwipeXApp(ctk.CTk):
             )
 
     def start_backend_servers(self):
-        # Start TCP server
-        self.websocket_thread = TcpServerThread(port=18888)
+        # Start WebSocket server
+        self.websocket_thread = WebSocketServerThread(fastapi_app, port=18888)
         self.websocket_thread.start()
 
         # Start UDP Discovery Broadcaster
