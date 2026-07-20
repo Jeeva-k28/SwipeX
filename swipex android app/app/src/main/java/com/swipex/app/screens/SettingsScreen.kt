@@ -1,17 +1,27 @@
 package com.swipex.app.screens
 
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.swipex.app.SwipeXViewModel
-import com.swipex.app.ui.SwipeXSlate
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SwipeXViewModel,
@@ -26,168 +36,247 @@ fun SettingsScreen(
     val isConnected by viewModel.isConnected.collectAsState()
     val connectionError by viewModel.connectionError.collectAsState()
 
-    AlertDialog(
+    var showManualIpDialog by remember { mutableStateOf(false) }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("Settings", color = Color.White) },
-        containerColor = SwipeXSlate,
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.55f)),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = Color(0xFF16181D)
             ) {
-                // Sensitivity Slider
-                Column {
-                    Text("Sensitivity: ${"%.2f".format(sensitivity)}", color = Color.White)
-                    Slider(
-                        value = sensitivity,
-                        onValueChange = { viewModel.setSensitivity(it) },
-                        valueRange = 0.1f..5.0f
-                    )
-                }
-
-                // Cursor Speed Slider
-                Column {
-                    Text("Cursor Speed: ${"%.2f".format(cursorSpeed)}", color = Color.White)
-                    Slider(
-                        value = cursorSpeed,
-                        onValueChange = { viewModel.setCursorSpeed(it) },
-                        valueRange = 0.1f..5.0f
-                    )
-                }
-
-                // Scroll Speed Slider
-                Column {
-                    Text("Scroll Speed: ${"%.2f".format(scrollSpeed)}", color = Color.White)
-                    Slider(
-                        value = scrollSpeed,
-                        onValueChange = { viewModel.setScrollSpeed(it) },
-                        valueRange = 0.1f..5.0f
-                    )
-                }
-
-                // Dark Mode Switch
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Dark Mode", color = Color.White)
-                    Switch(
-                        checked = isDarkMode,
-                        onCheckedChange = { viewModel.setDarkMode(it) }
-                    )
-                }
-
-                // Auto Connect Switch
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Auto Connect", color = Color.White)
-                    Switch(
-                        checked = autoConnect,
-                        onCheckedChange = { viewModel.setAutoConnect(it) }
-                    )
-                }
-
-                // Action Buttons
-                var manualIp by remember { mutableStateOf("") }
-                
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 20.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Text("Manual Connection", style = MaterialTheme.typography.titleSmall, color = Color.White)
+                    // ── Header ──────────────────────────────────────
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedTextField(
-                            value = manualIp,
-                            onValueChange = { manualIp = it },
-                            placeholder = { Text("Enter IP (e.g. 192.168.1.5)", color = Color.LightGray) },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = Color.Gray,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent
-                            )
+                        Text(
+                            text = "Settings",
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                        
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color(0xFF8A8D9B)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFF2A2D35), thickness = 1.dp)
+
+                    // ── Slider helper ────────────────────────────────
+                    @Composable
+                    fun SettingSlider(label: String, value: Float, onValueChange: (Float) -> Unit) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.width(110.dp)
+                            )
+                            Slider(
+                                value = value,
+                                onValueChange = onValueChange,
+                                valueRange = 0.1f..2.0f,
+                                modifier = Modifier.weight(1f),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = Color(0xFF2979FF),
+                                    inactiveTrackColor = Color(0xFF2A2D35)
+                                )
+                            )
+                            Text(
+                                text = "%.2f".format(value),
+                                color = Color(0xFF8A8D9B),
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(36.dp)
+                            )
+                        }
+                    }
+
+                    // ── Sliders ──────────────────────────────────────
+                    SettingSlider("Sensitivity", sensitivity) { viewModel.setSensitivity(it) }
+                    SettingSlider("Cursor Speed", cursorSpeed) { viewModel.setCursorSpeed(it) }
+                    SettingSlider("Scroll Speed", scrollSpeed) { viewModel.setScrollSpeed(it) }
+
+                    HorizontalDivider(color = Color(0xFF2A2D35), thickness = 1.dp)
+
+                    // ── Toggle helper ────────────────────────────────
+                    @Composable
+                    fun SettingToggle(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(label, color = Color.White, fontSize = 15.sp)
+                            Switch(
+                                checked = checked,
+                                onCheckedChange = onToggle,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF2979FF),
+                                    uncheckedThumbColor = Color(0xFF8A8D9B),
+                                    uncheckedTrackColor = Color(0xFF2A2D35)
+                                )
+                            )
+                        }
+                    }
+
+                    SettingToggle("Dark Mode", isDarkMode) { viewModel.setDarkMode(it) }
+                    SettingToggle("Auto Connect", autoConnect) { viewModel.setAutoConnect(it) }
+
+                    HorizontalDivider(color = Color(0xFF2A2D35), thickness = 1.dp)
+
+                    // ── Action Buttons ───────────────────────────────
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showManualIpDialog = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color.Transparent,
+                                contentColor = Color.White
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3A3D45))
+                        ) {
+                            Text(
+                                "Manual Connect",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1
+                            )
+                        }
+
                         Button(
                             onClick = {
-                                if (manualIp.isNotBlank()) {
-                                    viewModel.connectToIp(manualIp)
-                                }
+                                onPairNewComputer()
+                                onDismiss()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2979FF),
+                                contentColor = Color.White
+                            )
                         ) {
-                            Text("Connect")
+                            Text(
+                                "Scan QR Code",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1
+                            )
                         }
                     }
-                    
-                    if (connectionError != null) {
-                        Text(
-                            text = "Error: $connectionError",
-                            color = Color.Red,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
 
-                HorizontalDivider(color = Color.Gray, thickness = 0.5.dp)
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            onPairNewComputer()
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("Pair New Computer")
-                    }
-
+                    // ── Disconnect ───────────────────────────────────
                     if (isConnected) {
-                        Button(
+                        TextButton(
                             onClick = { viewModel.disconnect() },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Disconnect", color = Color.White)
+                            Text("Disconnect", color = Color(0xFFFF5252), fontSize = 14.sp)
                         }
                     }
-                }
 
-                HorizontalDivider(color = Color.Gray, thickness = 0.5.dp)
+                    // ── Footer ───────────────────────────────────────
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text("About SwipeX", color = Color(0xFF8A8D9B), fontSize = 13.sp)
+                        Text("Version 1.0", color = Color(0xFF555870), fontSize = 12.sp)
+                    }
 
-                // About section
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("SwipeX Touchpad Client", style = MaterialTheme.typography.bodyMedium, color = Color.White)
-                    Text("Version 1.0", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = Color.White)
             }
         }
-    )
+    }
+
+    // ── Manual IP Dialog ─────────────────────────────────────────────
+    if (showManualIpDialog) {
+        var manualIp by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showManualIpDialog = false },
+            containerColor = Color(0xFF1E2026),
+            title = { Text("Manual Connection", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = manualIp,
+                        onValueChange = { manualIp = it },
+                        placeholder = { Text("e.g. 192.168.1.5", color = Color(0xFF555870)) },
+                        label = { Text("IP Address", color = Color(0xFF8A8D9B)) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF2979FF),
+                            unfocusedBorderColor = Color(0xFF3A3D45)
+                        )
+                    )
+                    if (connectionError != null) {
+                        Text("⚠ $connectionError", color = Color(0xFFFF5252), fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (manualIp.isNotBlank()) {
+                            viewModel.connectToIp(manualIp)
+                            showManualIpDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2979FF),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Connect")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualIpDialog = false }) {
+                    Text("Cancel", color = Color(0xFF8A8D9B))
+                }
+            }
+        )
+    }
 }

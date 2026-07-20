@@ -76,17 +76,11 @@ class SwipeXViewModel(application: Application) : AndroidViewModel(application) 
         udpListener.start()
     }
 
-    private var lastMoveTime = 0L
-
-    fun onTouchMove(dx: Float, dy: Float) {
-        val currentTime = System.currentTimeMillis()
-        val timeDeltaMs = if (lastMoveTime == 0L) 16L else (currentTime - lastMoveTime)
-        lastMoveTime = currentTime
-
+    fun onTouchMove(dx: Float, dy: Float, timeDeltaMs: Long) {
         val distance = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
         if (distance == 0f || timeDeltaMs <= 0L) return
 
-        // Calculate velocity in pixels per millisecond
+        // Calculate velocity in pixels per millisecond using precise hardware timestamps
         val velocity = distance / timeDeltaMs.toFloat()
 
         // Adaptive pointer speed acceleration curve

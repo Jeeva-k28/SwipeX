@@ -1,5 +1,12 @@
 import os
 import sys
+import io
+
+# Redirect stdout/stderr if None (PyInstaller --noconsole execution fix)
+if sys.stdout is None:
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    sys.stderr = io.StringIO()
 import time
 import socket
 import threading
@@ -13,6 +20,16 @@ import uvicorn
 # Set customtkinter appearance
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+# Resolve the logo path (works both in source and PyInstaller --onefile mode)
+def _get_resource_path(relative_name: str) -> str:
+    """Return absolute path to a bundled resource, works for PyInstaller and dev mode."""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_name)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_name)
+
+LOGO_PATH = _get_resource_path("swipex_logo.png")
+ICO_PATH  = _get_resource_path("swipex_icon.ico")
 
 # Import native controller and tray
 from mouse_controller import MouseController
@@ -41,7 +58,6 @@ def ip_to_id(ip):
 # Retrieve local IP addresses
 def get_local_ips():
     ips = []
-    # Primary interface discovery trick
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -51,7 +67,6 @@ def get_local_ips():
     except Exception:
         pass
 
-    # Generic discovery of other interfaces
     try:
         host_name = socket.gethostname()
         _, _, ip_list = socket.gethostbyname_ex(host_name)
@@ -61,7 +76,6 @@ def get_local_ips():
     except Exception:
         pass
 
-    # Prioritize typical local subnets (192.168.x.x and 10.x.x.x) over virtual adapters (e.g. WSL/Docker)
     def ip_priority(ip):
         if ip.startswith("192.168."):
             return 0
@@ -85,7 +99,6 @@ def get_local_ips():
 async def websocket_endpoint(websocket: WebSocket):
     global is_connected, client_host, active_websocket
     
-    # Close any existing active connection cleanly to avoid leaks
     if active_websocket:
         try:
             await active_websocket.close(code=1000, reason="New connection accepted")
@@ -99,7 +112,6 @@ async def websocket_endpoint(websocket: WebSocket):
     client_host = websocket.client.host
     mouse_controller.reset_filters()
     
-    # Update GUI status in main thread
     if app_instance:
         app_instance.update_connection_status(True, client_host)
  
@@ -138,23 +150,18 @@ async def websocket_endpoint(websocket: WebSocket):
                 mouse_controller.gesture(parts[1])
     except WebSocketDisconnect:
         pass
-    except Exception as e:
-        print(f"WebSocket processing error: {e}")
     finally:
-        if active_websocket == websocket:
-            is_connected = False
-            active_websocket = None
-            client_host = "Unknown"
-            mouse_controller.reset_filters()
-            if app_instance:
-                app_instance.update_connection_status(False)
+        is_connected = False
+        active_websocket = None
+        if app_instance:
+            app_instance.update_connection_status(False)
 
 # Uvicorn WebSocket Server Thread
 class WebSocketServerThread(threading.Thread):
     def __init__(self, app, port=18888):
         super().__init__(daemon=True)
         self.port = port
-        self.config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+        self.config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning", log_config=None)
         self.server = uvicorn.Server(self.config)
         self.loop = None
  
@@ -180,43 +187,47 @@ class UdpBeaconThread(threading.Thread):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         while self.running:
-            if not is_connected:
-                # Broadcast local IPs so the phone can find us
-                local_ips = get_local_ips()
-                for ip in local_ips:
-                    message = f"SwipeXServer:{ip}:18888"
-                    try:
-                        sock.sendto(message.encode(), ("255.255.255.255", self.port))
-                    except Exception:
-                        pass
+            try:
+                msg = b"SWIPEX_BEACON_18888"
+                sock.sendto(msg, ('<broadcast>', self.port))
+            except Exception:
+                pass
             time.sleep(2.0)
-        sock.close()
 
     def stop(self):
         self.running = False
 
-# customtkinter App Window
+# Main CustomTkinter Application Class (Matching Image 2 Reference UI)
 class SwipeXApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         global app_instance
         app_instance = self
 
-        self.title("SwipeX Desktop Server")
-        self.geometry("450x570")
+        self.title("SwipeX Server")
+        self.geometry("640x510")
         self.resizable(False, False)
         
-        # Center the window
+        # Center window on screen
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        x = (screen_width - 450) // 2
-        y = (screen_height - 570) // 2
-        self.geometry(f"450x570+{x}+{y}")
+        x = (screen_width - 640) // 2
+        y = (screen_height - 510) // 2
+        self.geometry(f"640x510+{x}+{y}")
 
-        # Intercept window close
+        # Set window icon (taskbar + titlebar)
+        try:
+            if os.path.exists(ICO_PATH):
+                self.wm_iconbitmap(ICO_PATH)
+            elif os.path.exists(LOGO_PATH):
+                icon_img = Image.open(LOGO_PATH).resize((32, 32), Image.Resampling.LANCZOS)
+                self._icon_photo = ImageTk.PhotoImage(icon_img)
+                self.wm_iconphoto(True, self._icon_photo)
+        except Exception:
+            pass
+
         self.protocol("WM_DELETE_WINDOW", self.hide_window)
 
-        # Retrieve network interfaces
         self.ip_addresses = get_local_ips()
         self.selected_ip = self.ip_addresses[0]
 
@@ -225,107 +236,184 @@ class SwipeXApp(ctk.CTk):
         self.start_tray_icon()
 
     def build_ui(self):
-        # Header Label
-        self.header_label = ctk.CTkLabel(
-            self, 
-            text="SwipeX Touchpad Server", 
-            font=ctk.CTkFont(size=22, weight="bold")
+        self.configure(fg_color="#0D0E11")
+
+        # Main Container (2 Columns: Left Sidebar, Right Content Card)
+        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # ----------------------------------------------------
+        # Left Sidebar Panel (Matching Image 2)
+        # ----------------------------------------------------
+        self.sidebar_frame = ctk.CTkFrame(self, fg_color="#0D0E11", width=190, corner_radius=0)
+        self.sidebar_frame.grid(row=0, column=0, sticky="nsew", padx=16, pady=16)
+
+        # Logo Image + Title Row
+        logo_row = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
+        logo_row.pack(anchor="w", padx=4, pady=(4, 0))
+
+        # Attempt to load and show logo
+        try:
+            if os.path.exists(LOGO_PATH):
+                _pil_logo = Image.open(LOGO_PATH).resize((36, 36), Image.Resampling.LANCZOS)
+                self._ctk_logo = ctk.CTkImage(light_image=_pil_logo, dark_image=_pil_logo, size=(36, 36))
+                logo_img_lbl = ctk.CTkLabel(logo_row, image=self._ctk_logo, text="")
+                logo_img_lbl.pack(side="left", padx=(0, 8))
+        except Exception:
+            pass
+
+        # App Title Header
+        self.title_label = ctk.CTkLabel(
+            logo_row,
+            text="SwipeX",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color="#FFFFFF"
         )
-        self.header_label.pack(pady=(20, 10))
+        self.title_label.pack(side="left", anchor="w")
 
-        # Connection Status Container
-        self.status_frame = ctk.CTkFrame(self, fg_color="#1E1E24", corner_radius=16)
-        self.status_frame.pack(fill="x", padx=30, pady=10)
-
-        self.status_title = ctk.CTkLabel(
-            self.status_frame, 
-            text="STATUS", 
-            font=ctk.CTkFont(size=10, weight="bold")
+        self.subtitle_label = ctk.CTkLabel(
+            self.sidebar_frame,
+            text="Server",
+            font=ctk.CTkFont(size=14, weight="normal"),
+            text_color="#8A8D9B"
         )
-        self.status_title.pack(anchor="w", padx=16, pady=(10, 2))
+        self.subtitle_label.pack(anchor="w", padx=8, pady=(2, 24))
 
-        self.status_text_label = ctk.CTkLabel(
-            self.status_frame, 
-            text="Disconnected", 
-            text_color="#FF3B30", 
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        self.status_text_label.pack(anchor="w", padx=16, pady=(0, 10))
+        # Nav Items List
+        self.nav_items = [
+            ("✔  Status", True)
+        ]
 
-        # QR Code Display Box
-        self.qr_frame = ctk.CTkFrame(self, fg_color="#1E1E24", corner_radius=16)
-        self.qr_frame.pack(fill="both", expand=True, padx=30, pady=10)
+        for text, active in self.nav_items:
+            bg_col = "#1E2028" if active else "transparent"
+            txt_col = "#FFFFFF" if active else "#8A8D9B"
+            btn = ctk.CTkButton(
+                self.sidebar_frame,
+                text=text,
+                anchor="w",
+                fg_color=bg_col,
+                text_color=txt_col,
+                hover_color="#1E2028",
+                height=38,
+                corner_radius=10,
+                font=ctk.CTkFont(size=14, weight="bold" if active else "normal")
+            )
+            btn.pack(fill="x", pady=3)
 
-        self.qr_title = ctk.CTkLabel(
-            self.qr_frame, 
-            text="SCAN QR TO PAIR", 
-            font=ctk.CTkFont(size=10, weight="bold")
-        )
-        self.qr_title.pack(anchor="w", padx=16, pady=(10, 2))
-
-        self.qr_label = ctk.CTkLabel(self.qr_frame, text="")
-        self.qr_label.pack(pady=10)
-
-        # Network interface dropdown selection
-        self.dropdown_frame = ctk.CTkFrame(self.qr_frame, fg_color="transparent")
-        self.dropdown_frame.pack(fill="x", padx=16, pady=(0, 15))
-
-        self.ip_title = ctk.CTkLabel(
-            self.dropdown_frame, 
-            text="IP Address:", 
-            font=ctk.CTkFont(size=14, weight="bold")
-        )
-        self.ip_title.pack(side="left", padx=5)
-
-        self.ip_dropdown = ctk.CTkOptionMenu(
-            self.dropdown_frame,
-            values=self.ip_addresses,
-            command=self.on_ip_changed,
-            font=ctk.CTkFont(size=14, weight="bold")
-        )
-        self.ip_dropdown.pack(side="right", fill="x", expand=True, padx=5)
-        self.ip_dropdown.set(self.selected_ip)
-
-        # Bottom Actions Layout
-        self.actions_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.actions_frame.pack(fill="x", padx=30, pady=(10, 20))
-
-        self.tray_button = ctk.CTkButton(
-            self.actions_frame, 
-            text="Minimize to Tray", 
-            command=self.hide_window
-        )
-        self.tray_button.pack(side="left", fill="x", expand=True, padx=(0, 5))
-
-        self.quit_button = ctk.CTkButton(
-            self.actions_frame, 
-            text="Exit Server", 
-            fg_color="#FF3B30", 
-            hover_color="#D32F2F", 
+        # Bottom Action: Stop Server Button
+        self.stop_button = ctk.CTkButton(
+            self.sidebar_frame,
+            text="🔴 Stop Server",
+            anchor="w",
+            fg_color="transparent",
+            text_color="#FF453A",
+            hover_color="#2A1517",
+            height=38,
+            corner_radius=10,
+            font=ctk.CTkFont(size=14, weight="bold"),
             command=self.quit_app
         )
-        self.quit_button.pack(side="right", fill="x", expand=True, padx=(5, 0))
+        self.stop_button.pack(side="bottom", fill="x", pady=8)
 
-        # Load first QR code
+        # ----------------------------------------------------
+        # Right Status Content Card (Matching Image 2)
+        # ----------------------------------------------------
+        self.content_card = ctk.CTkFrame(self, fg_color="#16181D", corner_radius=22)
+        self.content_card.grid(row=0, column=1, sticky="nsew", padx=(0, 16), pady=16)
+
+        # Status Header Row
+        self.card_header = ctk.CTkFrame(self.content_card, fg_color="transparent")
+        self.card_header.pack(fill="x", padx=24, pady=(20, 12))
+
+        self.status_dot_text = ctk.CTkLabel(
+            self.card_header,
+            text="🟢  Server Active",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#30D158"
+        )
+        self.status_dot_text.pack(anchor="w")
+
+        self.address_label = ctk.CTkLabel(
+            self.card_header,
+            text=f"{self.selected_ip}:18888",
+            font=ctk.CTkFont(size=13),
+            text_color="#8A8D9B"
+        )
+        self.address_label.pack(anchor="w", pady=(2, 0))
+
+        # QR Code Display Frame (Centered Rounded Frame)
+        self.qr_border_frame = ctk.CTkFrame(
+            self.content_card,
+            fg_color="#0D0E11",
+            corner_radius=16,
+            border_width=1,
+            border_color="#2A2D35"
+        )
+        self.qr_border_frame.pack(padx=24, pady=8)
+
+        self.qr_image_label = ctk.CTkLabel(self.qr_border_frame, text="")
+        self.qr_image_label.pack(padx=16, pady=16)
+
+        # Parameter Table List
+        self.table_frame = ctk.CTkFrame(self.content_card, fg_color="transparent")
+        self.table_frame.pack(fill="x", padx=28, pady=(12, 16))
+
+        # Row 1: IP Address
+        self.r1_left = ctk.CTkLabel(self.table_frame, text="IP Address", font=ctk.CTkFont(size=13), text_color="#8A8D9B")
+        self.r1_left.grid(row=0, column=0, sticky="w", pady=4)
+        
+        self.ip_dropdown = ctk.CTkOptionMenu(
+            self.table_frame,
+            values=self.ip_addresses,
+            command=self.on_ip_changed,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#1E2028",
+            button_color="#2A2D35",
+            width=140,
+            height=26
+        )
+        self.ip_dropdown.grid(row=0, column=1, sticky="e", pady=4)
+        self.ip_dropdown.set(self.selected_ip)
+
+        self.table_frame.grid_columnconfigure(0, weight=1)
+        self.table_frame.grid_columnconfigure(1, weight=1)
+
+        # Row 2: Port
+        self.r2_left = ctk.CTkLabel(self.table_frame, text="Port", font=ctk.CTkFont(size=13), text_color="#8A8D9B")
+        self.r2_left.grid(row=1, column=0, sticky="w", pady=4)
+        self.r2_right = ctk.CTkLabel(self.table_frame, text="18888", font=ctk.CTkFont(size=13, weight="bold"), text_color="#FFFFFF")
+        self.r2_right.grid(row=1, column=1, sticky="e", pady=4)
+
+        # Row 3: Status
+        self.r3_left = ctk.CTkLabel(self.table_frame, text="Status", font=ctk.CTkFont(size=13), text_color="#8A8D9B")
+        self.r3_left.grid(row=2, column=0, sticky="w", pady=4)
+        self.r3_right = ctk.CTkLabel(self.table_frame, text="Active", font=ctk.CTkFont(size=13, weight="bold"), text_color="#30D158")
+        self.r3_right.grid(row=2, column=1, sticky="e", pady=4)
+
+        # Row 4: Clients
+        self.r4_left = ctk.CTkLabel(self.table_frame, text="Clients", font=ctk.CTkFont(size=13), text_color="#8A8D9B")
+        self.r4_left.grid(row=3, column=0, sticky="w", pady=4)
+        self.r4_right = ctk.CTkLabel(self.table_frame, text="0", font=ctk.CTkFont(size=13, weight="bold"), text_color="#FFFFFF")
+        self.r4_right.grid(row=3, column=1, sticky="e", pady=4)
+
         self.generate_qr_code()
 
     def generate_qr_code(self):
-        # Generate connection payload containing ws host
         payload = f"{self.selected_ip}:18888"
         qr = qrcode.QRCode(version=1, box_size=4, border=1)
         qr.add_data(payload)
         qr.make(fit=True)
         
-        # Style QR code for UI
-        qr_img = qr.make_image(fill_color="white", back_color="#1E1E24").convert("RGB")
-        # Resize image for display
-        qr_img = qr_img.resize((180, 180), Image.Resampling.LANCZOS)
+        qr_img = qr.make_image(fill_color="white", back_color="#0D0E11").convert("RGB")
+        qr_img = qr_img.resize((150, 150), Image.Resampling.LANCZOS)
         self.qr_image_tk = ctk.CTkImage(
             light_image=qr_img, 
             dark_image=qr_img, 
-            size=(180, 180)
+            size=(150, 150)
         )
-        self.qr_label.configure(image=self.qr_image_tk)
+        self.qr_image_label.configure(image=self.qr_image_tk)
+        self.address_label.configure(text=f"{self.selected_ip}:18888")
 
     def on_ip_changed(self, choice):
         self.selected_ip = choice
@@ -333,22 +421,18 @@ class SwipeXApp(ctk.CTk):
 
     def update_connection_status(self, connected, client_ip=None):
         if connected:
-            self.status_text_label.configure(
-                text=f"Connected to {client_ip}", 
-                text_color="#34C759"
-            )
+            self.status_dot_text.configure(text=f"🟢  Connected to {client_ip}", text_color="#30D158")
+            self.r3_right.configure(text="Connected", text_color="#30D158")
+            self.r4_right.configure(text="1", text_color="#FFFFFF")
         else:
-            self.status_text_label.configure(
-                text="Disconnected (Waiting...)", 
-                text_color="#FF3B30"
-            )
+            self.status_dot_text.configure(text="🟢  Server Active", text_color="#30D158")
+            self.r3_right.configure(text="Active", text_color="#30D158")
+            self.r4_right.configure(text="0", text_color="#FFFFFF")
 
     def start_backend_servers(self):
-        # Start WebSocket server
         self.websocket_thread = WebSocketServerThread(fastapi_app, port=18888)
         self.websocket_thread.start()
 
-        # Start UDP Discovery Broadcaster
         self.udp_thread = UdpBeaconThread(port=18889)
         self.udp_thread.start()
 
@@ -367,15 +451,12 @@ class SwipeXApp(ctk.CTk):
         self.focus_force()
 
     def quit_app(self):
-        # Stop background threads
         if hasattr(self, "udp_thread"):
             self.udp_thread.stop()
         if hasattr(self, "websocket_thread"):
             self.websocket_thread.stop()
         if hasattr(self, "tray"):
             self.tray.stop()
-        
-        # Shutdown Tkinter
         self.destroy()
         sys.exit(0)
 

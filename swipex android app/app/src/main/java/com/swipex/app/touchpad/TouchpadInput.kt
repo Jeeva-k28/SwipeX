@@ -20,11 +20,12 @@ enum class GestureMode {
 }
 
 fun Modifier.touchpadInput(
-    onMove: (Float, Float) -> Unit,
+    onMove: (Float, Float, Long) -> Unit,
     onClick: (String, String) -> Unit,
     onScroll: (Float, Float) -> Unit,   // dy, dx
     onZoom: (String) -> Unit,           // "in" / "out"
     onGesture: (String) -> Unit,        // "taskview", "desktop", "prevdesktop", "nextdesktop"
+    onPositionChange: ((androidx.compose.ui.geometry.Offset) -> Unit)? = null,
     vibrate: () -> Unit
 ): Modifier = this.pointerInput(Unit) {
     coroutineScope {
@@ -62,6 +63,8 @@ fun Modifier.touchpadInput(
 
             while (true) {
                 val event = awaitPointerEvent()
+                // Consume all touch events so Android/Compose does not handle them
+                event.changes.forEach { it.consume() }
                 val pointers = event.changes
                 val activePointers = pointers.filter { it.pressed }
 
@@ -133,14 +136,17 @@ fun Modifier.touchpadInput(
                         }
                     }
 
+                    val timeDeltaMs = (pointer.uptimeMillis - pointer.previousUptimeMillis).coerceAtLeast(1L)
                     if (gestureMode == GestureMode.ONE_FINGER_MOVE) {
                         if (pointer.previousPressed) {
-                            onMove(delta.y, -delta.x)
+                            onPositionChange?.invoke(pointer.position)
+                            onMove(delta.y, -delta.x, timeDeltaMs)
                             pointer.consume()
                         }
                     } else if (gestureMode == GestureMode.ONE_FINGER_DRAG) {
                         if (pointer.previousPressed) {
-                            onMove(delta.y, -delta.x)
+                            onPositionChange?.invoke(pointer.position)
+                            onMove(delta.y, -delta.x, timeDeltaMs)
                             pointer.consume()
                         }
                     }

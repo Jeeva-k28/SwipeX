@@ -1,5 +1,6 @@
 import ctypes
 import time
+import threading
 
 # dwFlags Constants
 MOUSEEVENTF_MOVE = 0x0001
@@ -20,14 +21,17 @@ VK_D = 0x44
 
 KEYEVENTF_KEYUP = 0x0002
 
-class DeltaSmoother:
+class DynamicDeltaSmoother:
     """
-    Exponential Moving Average (EMA) filter specifically designed for relative deltas.
-    Smooths out micro-jitter while moving, but resets instantly when touch stops
-    to avoid any lag or sliding effect.
+    Speed-sensitive relative delta smoother.
+    Adjusts alpha dynamically: slow movements get high smoothing (small alpha, e.g. 0.40)
+    to kill micro-jitter/hand tremors. Fast movements get low smoothing (high alpha, e.g. 0.95)
+    to guarantee zero latency.
     """
-    def __init__(self, alpha=0.3):
-        self.alpha = alpha
+    def __init__(self, min_alpha=0.40, max_alpha=0.95, speed_scale=0.08):
+        self.min_alpha = min_alpha
+        self.max_alpha = max_alpha
+        self.speed_scale = speed_scale
         self.last_dx = 0.0
         self.last_dy = 0.0
 
@@ -37,8 +41,11 @@ class DeltaSmoother:
             self.last_dy = 0.0
             return 0.0, 0.0
             
-        smoothed_dx = self.alpha * dx + (1.0 - self.alpha) * self.last_dx
-        smoothed_dy = self.alpha * dy + (1.0 - self.alpha) * self.last_dy
+        speed = (dx * dx + dy * dy) ** 0.5
+        alpha = self.min_alpha + (self.max_alpha - self.min_alpha) * (1.0 - 2.718281828459045 ** (-speed * self.speed_scale))
+        
+        smoothed_dx = alpha * dx + (1.0 - alpha) * self.last_dx
+        smoothed_dy = alpha * dy + (1.0 - alpha) * self.last_dy
         
         self.last_dx = smoothed_dx
         self.last_dy = smoothed_dy
@@ -47,17 +54,27 @@ class DeltaSmoother:
 class MouseController:
     """
     Simulates Windows mouse and keyboard inputs using Win32 API.
-    Includes sub-pixel remainder accumulation for precision movements.
+    Drains accumulated movement targets over a high-frequency background thread (500Hz)
+    to interpolate the movement between discrete network packets, resulting in butter-smooth gliding.
     """
     def __init__(self):
-        self.smoother = DeltaSmoother(alpha=0.3)
-        self.dx_remainder = 0.0
-        self.dy_remainder = 0.0
+        self.smoother = DynamicDeltaSmoother()
+        
+        # Thread-safe glide accumulation buffers
+        self.target_dx = 0.0
+        self.target_dy = 0.0
+        self.lock = threading.Lock()
+        
+        # Start background glide worker
+        self.running = True
+        self.worker = threading.Thread(target=self._glide_worker, daemon=True)
+        self.worker.start()
 
     def reset_filters(self):
-        self.smoother = DeltaSmoother(alpha=0.3)
-        self.dx_remainder = 0.0
-        self.dy_remainder = 0.0
+        self.smoother = DynamicDeltaSmoother()
+        with self.lock:
+            self.target_dx = 0.0
+            self.target_dy = 0.0
 
     def _send_input(self, dx, dy, mouse_data, dw_flags):
         ctypes.windll.user32.mouse_event(dw_flags, int(dx), int(dy), int(mouse_data), 0)
@@ -70,17 +87,56 @@ class MouseController:
         # Smooth relative velocity deltas
         smooth_dx, smooth_dy = self.smoother.filter(dx, dy)
         
-        self.dx_remainder += smooth_dx
-        self.dy_remainder += smooth_dy
+        # Add filtered deltas to the targets for the glide worker to consume
+        with self.lock:
+            self.target_dx += smooth_dx
+            self.target_dy += smooth_dy
+
+    def _glide_worker(self):
+        """
+        High-frequency loop (every 2ms) that drains targets using fractional steps.
+        This fills in the gaps between packets, producing smooth cursor gliding.
+        """
+        remainder_x = 0.0
+        remainder_y = 0.0
         
-        move_x = int(self.dx_remainder)
-        move_y = int(self.dy_remainder)
-        
-        self.dx_remainder -= move_x
-        self.dy_remainder -= move_y
-        
-        if move_x != 0 or move_y != 0:
-            self._send_input(move_x, move_y, 0, MOUSEEVENTF_MOVE)
+        while self.running:
+            time.sleep(0.002) # ~500Hz update frequency
+            
+            with self.lock:
+                current_x = self.target_dx
+                current_y = self.target_dy
+                
+            if current_x == 0.0 and current_y == 0.0:
+                continue
+                
+            # Drain a fraction of the remaining target (e.g. 55%)
+            factor = 0.55
+            step_x = current_x * factor
+            step_y = current_y * factor
+            
+            # Clamp down small residual movements to prevent lingering glide drift
+            if abs(current_x) < 0.15:
+                step_x = current_x
+            if abs(current_y) < 0.15:
+                step_y = current_y
+                
+            with self.lock:
+                self.target_dx -= step_x
+                self.target_dy -= step_y
+                
+            # Handle fractional Win32 pixel steps
+            remainder_x += step_x
+            remainder_y += step_y
+            
+            move_x = int(remainder_x)
+            move_y = int(remainder_y)
+            
+            remainder_x -= move_x
+            remainder_y -= move_y
+            
+            if move_x != 0 or move_y != 0:
+                self._send_input(move_x, move_y, 0, MOUSEEVENTF_MOVE)
 
     def scroll(self, dy):
         # Vertical scroll (scroll amount is relative, positive is up, negative is down)

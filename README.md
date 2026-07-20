@@ -1,105 +1,170 @@
-# SwipeX: Cross-Platform Remote Touchpad System
+<div align="center">
 
-SwipeX transforms an Android phone into a high-precision, wireless Windows touchpad. The system consists of an Android application and a lightweight Windows desktop tray server that communicate completely offline over a local network.
+<img src="screenshots/windows_app.png" width="80" alt="SwipeX Logo"/>
 
----
+# SwipeX
 
-## 📦 Download & Release Artifacts
+### Turn your Android phone into a wireless Windows trackpad
 
-Both built packages are compiled and available in the `Release` folder:
-* **Android Application**: [SwipeX.apk](file:///D:/projects/swipex/Release/SwipeX.apk) (approx. 21.5 MB)
-* **Windows Desktop App**: [SwipeX.exe](file:///D:/projects/swipex/Release/SwipeX.exe) (approx. 30.2 MB)
+[![Android](https://img.shields.io/badge/Android-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](Release/SwipeX.apk)
+[![Windows](https://img.shields.io/badge/Windows-EXE-0078D4?style=for-the-badge&logo=windows&logoColor=white)](Release/SwipeX.exe)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-No additional Python runtimes, Visual Studio components, or external archives are required. The executable and APK are completely standalone.
-
----
-
-## 🛠️ Installation Guide
-
-### Android App
-1. Transfer the [SwipeX.apk](file:///D:/projects/swipex/Release/SwipeX.apk) to your Android device.
-2. Tap the APK file to install it.
-3. If prompted by Android security, enable **"Allow installation from unknown sources"** for your file manager.
-4. Open SwipeX from your app drawer.
-
-### Windows App
-1. Copy [SwipeX.exe](file:///D:/projects/swipex/Release/SwipeX.exe) to your computer.
-2. Double-click to run it.
-3. The server starts instantly, running silently in the background. A mouse icon will appear in your **Windows System Tray** (bottom right of the taskbar, near the clock).
+</div>
 
 ---
 
-## 🔗 Pairing & Connection Guide
+## 📸 Screenshots
 
-### Step 1: Open the Pairing Window
-* On your Windows computer, locate the SwipeX icon in the system tray.
-* **Double-click** the tray icon (or right-click and select **"Open SwipeX"**).
-* A dashboard window will open, displaying the connection status and a **QR Code**.
+<div align="center">
 
-### Step 2: Scan QR from the Phone
-* Open the SwipeX app on your Android phone.
-* Open the **Settings** menu by tapping the gear icon on the top right.
-* Tap the blue **"Pair New Computer"** button. The camera scanner will slide over (delegated safely via Google Play Services without requiring manual camera permission configuration!).
-* Point your camera at the QR code displayed on the Windows app.
-* The phone will scan the QR code and connect within **1 second**. The connection status indicator on both apps will turn **Green (Connected)**.
+| Touchpad | Active Glow | Settings | Windows Server |
+|:---:|:---:|:---:|:---:|
+| <img src="screenshots/mobile_touchpad.jpeg" width="180"/> | <img src="screenshots/mobile_touchpad_active.jpeg" width="180"/> | <img src="screenshots/mobile_settings.jpeg" width="180"/> | <img src="screenshots/windows_app.png" width="300"/> |
+| *Full-screen touchpad* | *Neon glow trail* | *Settings panel* | *Windows server UI* |
 
-### Step 3: Auto-Discovery & Auto-Connection (Hands-Free)
-* Once paired, SwipeX stores the connection details.
-* The next time you open the app on the same local network (Wi-Fi, Ethernet, or mobile hotspot), it will reconnect automatically.
-* If your computer's IP address changes, the Windows server broadcasts its identity over UDP port `18889`. The phone automatically listens, captures the new IP address, and reconnects silently.
+</div>
 
 ---
 
-## 🖐️ Gesture Reference
+## ✨ Features
 
-SwipeX mimics a physical laptop trackpad with highly-responsive, low-latency, and smooth cursor movement:
-
-| Gesture | Action | Description |
-| :--- | :--- | :--- |
-| **One Finger Move** | **Move Cursor** | Smoothly moves the cursor. Uses relative deltas for a natural feel. |
-| **One Finger Tap** | **Left Click** | Quickly tap the touchpad area once to trigger a standard left mouse click. |
-| **One Finger Hold** | **Left Click Hold (Drag)** | Hold a finger down on the pad for 400ms. A short vibration triggers, letting you drag-and-drop files or select text. |
-| **Two Finger Scroll** | **Vertical Scroll** | Move two fingers up/down on the pad to scroll vertically in browsers and apps. |
-| **Bottom Left Button** | **Left Click** | Press to select, click, or hold down (useful for dragging with a second finger). |
-| **Bottom Right Button** | **Right Click** | Press to trigger standard Windows context menus. |
+- 🖱️ **Smooth cursor control** — Sub-pixel precision with glide interpolation at 500Hz
+- 📡 **Wireless & offline** — Works on local Wi-Fi, no internet required
+- ⚡ **Instant connect** — QR code scan or auto-discovery over UDP broadcast
+- 🌟 **Neon glow trail** — Real-time touch visualization that fades in 1 second
+- 📱 **Full-screen touchpad** — Immersive mode with gesture exclusion
+- 🖥️ **Tray app** — Windows server runs silently in the background
+- ⚙️ **Configurable** — Sensitivity, cursor speed, scroll speed, dark mode
 
 ---
 
-## 🔧 Developer Settings (Android App)
+## 📦 Download
 
-Tap the gear icon on the top right to access configuration sliders:
-* **Sensitivity**: Multiplies touch motion deltas to adjust responsiveness.
-* **Cursor Speed**: Adjusts overall cursor velocity.
-* **Scroll Speed**: Controls the multiplier for vertical two-finger scrolling.
-* **Dark Mode**: Switch between pure black OLED theme and slate theme.
-* **Auto Connect**: Enable/disable automatic connection to the last paired PC.
+| Platform | File | Size |
+|:---|:---|:---|
+| 📱 **Android** | [SwipeX.apk](Release/SwipeX.apk) | ~33 MB |
+| 🖥️ **Windows** | [SwipeX.exe](Release/SwipeX.exe) | ~46 MB |
+
+> Both files are fully standalone — no additional runtimes or installs needed.
 
 ---
 
-## ⚙️ Technical Architecture & Build Guide
+## 🚀 Quick Setup
 
-### Technical Specifications
-* **Communication Protocol**: Lightweight, low-overhead string messages (`m,dx,dy`, `c,button,action`, `s,dy`) transmitted over **asynchronous WebSockets** for under 10ms latency.
-* **Mouse Simulation**: Simulates Windows events using the native Win32 `SendInput` API, avoiding cursor jumps or jumps during bounds limits.
-* **Smoothing**: Implements the **One Euro Filter** (adaptive low-pass filter) to dynamically smooth tracking noise at rest (high filtering) and eliminate lag during rapid movement (low filtering).
-* **Sub-Pixel Precision**: Float coordinates are accumulated in a fractional remainder buffer before converting to integer mouse steps, preserving micro-adjustments.
+### 1. Windows — Start the Server
+1. Run **SwipeX.exe** — the server starts instantly
+2. A SwipeX icon appears in your **system tray** (bottom-right taskbar)
+3. Double-click the tray icon to open the dashboard with the **QR code**
 
-### Building from Source
+### 2. Android — Connect
+1. Install **SwipeX.apk** (enable *Unknown Sources* if prompted)
+2. Open the app → tap the **QR scanner icon** (top right)
+3. Scan the QR code shown on your Windows app
+4. ✅ Connected — start using your phone as a trackpad!
 
-#### Android App (Gradle)
-Requires JDK 21 and Android SDK Platform 34/36.
-1. Open the directory `D:\projects\swipex\swipex android app` inside Android Studio.
-2. Open terminal and run:
-   ```powershell
-   .\gradlew.bat assembleRelease
-   ```
-3. The release APK will be generated at `app/build/outputs/apk/release/app-release-unsigned.apk`.
+### Auto-Reconnect
+Once paired, SwipeX remembers your PC. Next time on the same network it reconnects **automatically** — no QR scan needed.
 
-#### Windows App (Python)
-Requires Python 3.11 with `pyinstaller`, `customtkinter`, `qrcode`, and `pywin32`.
-1. Open a command prompt inside `SwipeX Desktop`.
-2. Run the build script:
-   ```cmd
-   python build_exe.py
-   ```
-3. PyInstaller packages the app, dynamic libraries, and assets into a single-file executable `dist/SwipeX.exe`.
+---
+
+## 🖐️ Gestures
+
+| Gesture | Action |
+|:---|:---|
+| **1 finger slide** | Move cursor |
+| **1 finger tap** | Left click |
+| **1 finger hold (400ms)** | Click & drag |
+| **2 finger slide** | Scroll vertically |
+| **2 finger pinch** | Zoom in/out |
+| **3 finger swipe** | Window gestures |
+
+---
+
+## ⚙️ Settings
+
+Open Settings from the gear icon (top right of the app):
+
+| Setting | Description |
+|:---|:---|
+| **Sensitivity** | Touch delta multiplier (0.1 – 2.0) |
+| **Cursor Speed** | Overall cursor velocity |
+| **Scroll Speed** | Two-finger scroll multiplier |
+| **Dark Mode** | Pure black OLED theme |
+| **Auto Connect** | Auto-reconnect to last paired PC |
+
+---
+
+## 🔧 Technical Architecture
+
+### Communication
+- **Protocol**: WebSocket over local Wi-Fi (port `18888`)
+- **Discovery**: UDP broadcast beacon on port `18889`
+- **Message format**: Lightweight CSV strings — `m,dx,dy` · `c,button,action` · `s,dy`
+
+### Cursor Smoothing
+- **Glide interpolation** — 500Hz background thread drains movement buffer for continuous, jitter-free motion
+- **Dynamic smoother** — Adaptive alpha (0.40–0.95) based on speed: high filtering at rest, low filtering during fast movement
+- **Sub-pixel accumulator** — Float deltas accumulated before integer conversion for micro-precision
+
+### Stack
+| Component | Technology |
+|:---|:---|
+| Android UI | Jetpack Compose |
+| Android Networking | OkHttp WebSocket |
+| Windows Server | Python + FastAPI + Uvicorn |
+| Windows UI | CustomTkinter |
+| Mouse Simulation | Win32 `SendInput` API |
+| Packaging | PyInstaller (onefile) + Gradle |
+
+---
+
+## 🏗️ Build from Source
+
+### Android
+```bash
+cd "swipex android app"
+.\gradlew assembleRelease
+# Output: app/build/outputs/apk/release/app-release.apk
+```
+
+### Windows
+```bash
+cd "SwipeX Desktop"
+python -m PyInstaller SwipeX.spec --clean --noconfirm
+# Output: dist/SwipeX.exe
+```
+
+> **Requirements**: Python 3.11, JDK 21, Android SDK 35
+
+---
+
+## 📁 Project Structure
+
+```
+SwipeX/
+├── Release/                  # Built binaries
+│   ├── SwipeX.apk
+│   └── SwipeX.exe
+├── screenshots/              # App screenshots
+├── swipex android app/       # Android (Kotlin + Compose)
+│   └── app/src/main/java/com/swipex/app/
+│       ├── MainActivity.kt
+│       ├── SwipeXViewModel.kt
+│       ├── screens/          # TouchpadScreen, SettingsScreen
+│       ├── touchpad/         # Input handling
+│       ├── network/          # WebSocket manager
+│       └── gesture/          # Gesture detection
+└── SwipeX Desktop/           # Windows server (Python)
+    ├── app.py                # Main UI + server
+    ├── mouse_controller.py   # Win32 cursor control
+    └── tray_icon.py          # System tray
+```
+
+---
+
+<div align="center">
+
+Made with ❤️ · SwipeX v1.0
+
+</div>
