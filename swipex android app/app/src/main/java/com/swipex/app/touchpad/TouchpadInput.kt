@@ -63,7 +63,7 @@ fun Modifier.touchpadInput(
 
             if (isButtonZone) {
                 buttonFingerId = down.id
-                buttonType = if (startPos.y > buttonMidY) "l" else "r"
+                buttonType = if (startPos.y > buttonMidY) "r" else "l"
             }
             
             // Start a coroutine to check for tap-hold drag (only if NOT in button zone)

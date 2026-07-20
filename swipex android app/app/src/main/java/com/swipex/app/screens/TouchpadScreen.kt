@@ -204,7 +204,7 @@ fun TouchpadScreen(viewModel: SwipeXViewModel) {
                     val height = size.height
                     val buttonWidth = width * 0.18f
                     val buttonMidY = height / 2f
-                    val lineColor = Color(0xFF2A2D35) // Same gray color as the border
+                    val lineColor = Color.White.copy(alpha = 0.35f) // Visible white dashed lines
                     val dashEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
                         floatArrayOf(15f, 15f), 
                         0f
