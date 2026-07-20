@@ -198,16 +198,36 @@ fun TouchpadScreen(viewModel: SwipeXViewModel) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                // Subtle Centered Touch Gesture Icon (Matching Image 1)
-                Icon(
-                    imageVector = Icons.Default.TouchApp,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.15f),
-                    modifier = Modifier.size(56.dp)
-                )
-
-                // High-Performance 1-Second Fading Neon Glow Line Canvas Layer
+                // High-Performance Fading Neon Glow Line Canvas Layer with Button Demarcations
                 Canvas(modifier = Modifier.fillMaxSize()) {
+                    val width = size.width
+                    val height = size.height
+                    val buttonWidth = width * 0.18f
+                    val buttonMidY = height / 2f
+                    val lineColor = Color(0xFF2A2D35) // Same gray color as the border
+                    val dashEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                        floatArrayOf(15f, 15f), 
+                        0f
+                    )
+
+                    // Draw vertical dashed separator line
+                    drawLine(
+                        color = lineColor,
+                        start = Offset(buttonWidth, 0f),
+                        end = Offset(buttonWidth, height),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = dashEffect
+                    )
+
+                    // Draw horizontal dashed separator line
+                    drawLine(
+                        color = lineColor,
+                        start = Offset(0f, buttonMidY),
+                        end = Offset(buttonWidth, buttonMidY),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = dashEffect
+                    )
+
                     val now = currentTime
                     for (i in 0 until trailPoints.size - 1) {
                         val p1 = trailPoints[i]
