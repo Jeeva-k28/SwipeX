@@ -57,13 +57,16 @@ fun Modifier.touchpadInput(
 
             // Button tracking
             var buttonFingerId: PointerId? = null
-            var buttonType: String? = null
             var buttonPressedSent = false
             val isButtonZone = startPos.x < buttonWidth
+            val localButtonType = if (isButtonZone) {
+                if (startPos.y > buttonMidY) "r" else "l"
+            } else {
+                null
+            }
 
             if (isButtonZone) {
                 buttonFingerId = down.id
-                buttonType = if (startPos.y > buttonMidY) "r" else "l"
             }
             
             // Start a coroutine to check for tap-hold drag (only if NOT in button zone)
@@ -79,9 +82,9 @@ fun Modifier.touchpadInput(
 
             // Start a coroutine to check for button hold
             val buttonHoldJob = launch {
-                if (isButtonZone) {
+                if (isButtonZone && localButtonType != null) {
                     delay(180) // 180ms hold triggers click down
-                    onClick(buttonType!!, "d")
+                    onClick(localButtonType, "d")
                     buttonPressedSent = true
                     vibrate()
                 }
@@ -100,8 +103,8 @@ fun Modifier.touchpadInput(
                     if (isDragging) {
                         onClick("l", "u")
                     }
-                    if (buttonPressedSent && buttonType != null) {
-                        onClick(buttonType, "u")
+                    if (buttonPressedSent && localButtonType != null) {
+                        onClick(localButtonType, "u")
                     }
                     break
                 }
@@ -114,13 +117,12 @@ fun Modifier.touchpadInput(
                             // Button finger released!
                             buttonHoldJob.cancel()
                             if (buttonPressedSent) {
-                                onClick(buttonType!!, "u")
+                                if (localButtonType != null) onClick(localButtonType, "u")
                             } else {
                                 // Tap in button zone
-                                onClick(buttonType!!, "t")
+                                if (localButtonType != null) onClick(localButtonType, "t")
                             }
                             buttonFingerId = null
-                            buttonType = null
                             buttonPressedSent = false
                         } else {
                             // Check if moved too far
@@ -128,10 +130,9 @@ fun Modifier.touchpadInput(
                             if (dist > 15.0f) {
                                 buttonHoldJob.cancel()
                                 if (buttonPressedSent) {
-                                    onClick(buttonType!!, "u")
+                                    if (localButtonType != null) onClick(localButtonType, "u")
                                 }
                                 buttonFingerId = null
-                                buttonType = null
                                 buttonPressedSent = false
                             }
                         }
@@ -151,8 +152,8 @@ fun Modifier.touchpadInput(
                         0f
                     }
 
-                    if (buttonPressedSent && buttonType != null) {
-                        onClick(buttonType, "u")
+                    if (buttonPressedSent && localButtonType != null) {
+                        onClick(localButtonType, "u")
                     } else if (gestureMode == GestureMode.ONE_FINGER_DRAG || isDragging) {
                         onClick("l", "u")
                     } else if (gestureMode == GestureMode.NONE && buttonFingerId == null) {
